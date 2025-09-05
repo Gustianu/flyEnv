@@ -1,4 +1,3 @@
-// TINGGAL DI SS KODE BARU DIBAWAH SENDIRI (tidak ada error)
 // express = nama framework node.js (dipanggil dengan require('expresss'))
 const express = require('express'); //  import library dari express
 const app = express();              // membuat instance aplikasi express
