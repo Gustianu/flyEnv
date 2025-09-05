@@ -1,0 +1,4 @@
+JavaScript
+pahami penggunaan arrow function JavaScript
+pahami penggunaan object (methode didalam object)
+pahami variabel nya apa saja
