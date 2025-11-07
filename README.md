@@ -38,5 +38,3 @@ npm start
 
 ## Tangkapan Layar
 
-
-
