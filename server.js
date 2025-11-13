@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require(`jsonwebtoken`);
 const JWT_SECRET = process.env.JWT_SECRET;
 // impor middleware
-const authenticateToken = require(`./middleware/authMiddleware`);
+const { authenticateToken, authorizeRole } = require(`./middleware/auth.js`);
 const express = require('express'); // framework web server, express = library untuk membuat REST API dengan mudah
 const cors = require('cors');   // untuk mengizinkan server bisa diakses dari frontend berbeda domain (react, flutter web)
 const db = require('./database.js');    // koneksi database SQLite
@@ -17,28 +17,6 @@ app.use(cors());
 //middleware data
 // untuk parsing body request JSON??
 app.use(express.json());
-
-//dummy data (id,title,director,year)
-// digunakan untuk pengganti database jika belum ada database
-// let movies = [
-//     { id: 1, title: 'LOTR', director: 'Peter Jackson', year: 1999 },
-//     { id: 2, title: 'avenger', director: 'Peter Jackson', year: 2010 },
-//     { id: 3, title: 'spiderman-', director: 'Peter Jackson', year: 2004 },
-// ];
-
-// dummy data
-// sama seperti movies, director dibawah digunakan untuk pengganti database
-// let director = [
-//     { id: 1, name: 'Peter Jackson' },
-//     { id: 2, name: 'Peter Jackson' },
-//     { id: 3, name: 'Peter Jackson' },
-// ];
-
-// console.log(movies);
-
-// app.get('/', (req, res) => {
-//     res.send('Selamat Datang diserver Node.js Tahap awal, terimakasih');
-// });
 
 //  === AUTH ROUTES REGISTER === 
 app.post(`/auth/register`, (req, res) =>{
@@ -53,8 +31,8 @@ app.post(`/auth/register`, (req, res) =>{
             return res.status(500).json({error: `Gagal memproses pendaftaran` });
         }
 
-        const sql=`INSERT INTO users (username, password) VALUES(?, ?)`;
-        const params = [username.toLowerCase(), hashedPassword];
+        const sql=`INSERT INTO users (username, password, role) VALUES(?, ?, ?)`;
+        const params = [username.toLowerCase(), hashedPassword, `user`];
 
         db.run(sql, params, function(err) {
             if (err) {
@@ -69,6 +47,34 @@ app.post(`/auth/register`, (req, res) =>{
     });
 });
 
+// Hanya untuk pengujian
+// === ROLE ADMIN ===
+app.post(`/auth/register-admin`, (req, res) => {
+    const { username, password} = req.body;
+    if (!username || !password || password.length < 6) {
+        return res.status(400).json({erorr: `Username dan Password (min 6 char) harus diisi`});
+    }
+
+    bcrypt.hash(password, 10, (err, hashedPassword) =>{
+        if (err) {
+            console.error("Error hashing:", err);
+            return res.status(500).json({error: `Gagal memproses pendaftaran` });
+        }
+
+        const sql = `INSERT INTO users (username, password, role) VALUES(?, ?, ?)`;
+        const params = [username.toLowerCase(), hashedPassword, `admin`];
+
+        db.run(sql, params, function(err) {
+            if (err) {
+                if (err.message.includes(`UNIQUE`)) {
+                    return res.status(409).json({ error: `username admin sudah ada`});
+                }
+                return res.status(500).json({error:err.message});
+            }
+            res.status(201).json({ message: `Admin berhasil dibuat`, userId: this.lastID });
+        })
+    })
+})
 
 // === AUTH ROUTES LOGIN === 
 app.post(`/auth/login`, (req, res) => {
@@ -88,7 +94,7 @@ app.post(`/auth/login`, (req, res) => {
                 return res.status(401).json({ error: `Kredensial tidak valid`});
             }
 
-            const payload = { user: {id: user.id, username: user.username}};
+            const payload = { user: {id: user.id, username: user.username, role: user.role}};
 
             jwt.sign(payload, JWT_SECRET, { expiresIn: `1h`}, (err, token) => {
                 if (err) {
@@ -114,7 +120,7 @@ app.get('/status', (req, res) => {
 
 
 // Route GET /movies -> ambil semua data film dari tabel movies
-app.get('/movies', authenticateToken, (req, res) => {
+app.get('/movies', (req, res) => {
     const sql = "SELECT * FROM movies ORDER BY id ASC  ";  // ASC =  dari kecil ke besar, terlama ke terbaru
     db.all(sql, [], (err, rows) => {  // ambil semua hasil query
         if (err) {  // kalau error return status 404
@@ -138,7 +144,7 @@ app.get('/directors', (req, res) => {
 
 
 // Route GET /movies/:id = ambil detail movie berdasarkan ID
-app.get('/movies/:id', authenticateToken, (req, res) => {
+app.get('/movies/:id', (req, res) => {
     const sql = "SELECT * FROM movies WHERE id = ?";
     const params = [req.params.id];
     db.get(sql, params, (err, row) => { // hanya ambil satu row/baris
@@ -196,7 +202,7 @@ app.post("/directors", authenticateToken, (req, res) => {
 
 
 // Update Movie berdasarkan ID
-app.put("/movies/:id", authenticateToken, (req, res) => {
+app.put("/movies/:id", [authenticateToken ,authorizeRole("admin")], (req, res) => {
     const { title, director, year } = req.body;
     const id = req.params.id;
 
@@ -220,7 +226,7 @@ app.put("/movies/:id", authenticateToken, (req, res) => {
 
 
 // Update director berdasarkan ID
-app.put("/directors/:id", authenticateToken, (req, res) => {
+app.put("/directors/:id", [authenticateToken ,authorizeRole("admin")], (req, res) => {
     const { name, birthyear } = req.body;
     const { id } = req.params;
 
@@ -243,7 +249,7 @@ app.put("/directors/:id", authenticateToken, (req, res) => {
 });
 
 // Delete Movie berdasarkan ID
-app.delete("/movies/:id", authenticateToken, (req, res) => {
+app.delete("/movies/:id", [authenticateToken ,authorizeRole("admin")], (req, res) => {
     const { id } = req.params;
 
     const sql = "DELETE FROM movies WHERE id = ?";
@@ -262,7 +268,7 @@ app.delete("/movies/:id", authenticateToken, (req, res) => {
 
 
 // Delete director berdasarkan ID
-app.delete("/directors/:id", authenticateToken, (req, res) => {
+app.delete("/directors/:id", [authenticateToken ,authorizeRole("admin")], (req, res) => {
     const { id } = req.params;
 
     const sql = "DELETE FROM directors WHERE id = ?";
