@@ -29,3 +29,8 @@ function authorizeRole(role) {
         return res.status(403).json({ error: 'Akses Dilarang: Peran tidak memadai' });
     };
 }
+
+module.exports = {
+    authenticateToken,
+    authorizeRole
+}
